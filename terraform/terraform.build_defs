@@ -1,0 +1,124 @@
+def terraform_module(
+    name: str,
+    srcs: list = None,
+    strip: list = [],
+    hashes: list = [],
+    deps: list = [],
+    licences: list = [],
+    labels: list = [],
+    visibility: list = [],
+):
+    """Build rule for obtaining a remote Terraform Module or defining a local Terraform module.
+    Args:
+        name: The name of the build rule.
+        srcs: The source Terraform files for the Terraform module.
+        strip: The files/directories to strip from the module.
+        hashes: The hashes to verify the downloaded archive against.
+        deps: The modules that this module depends on.
+        licences: The licences associated with the module.
+        labels: The additonal labels to add to the build rule.
+        visibility: The targets to make the toolchain visible to.
+    """
+    module_srcs_dir=None
+    module_srcs_dir=genrule(
+        name = f"_{name}#srcs",
+        srcs = srcs,
+        outs = [f"_{name}#srcs"],
+        # flatten the module as srcs in other directories should be other modules
+        cmd = "mkdir $OUTS && for src in $SRCS; do cp $src $OUTS/; done",
+    )
+
+    deps=[canonicalise(dep) for dep in deps]
+
+    genrule(
+        name = name,
+        srcs = [module_srcs_dir],
+        outs = [name],
+        exported_deps=deps,
+        deps=deps,
+        visibility=visibility,
+        tools=["//terraform:prepare_module"],
+        cmd = f"""
+$TOOLS \\
+    --pkg="$PKG" \\
+    --name="$NAME" \\
+    --module-dir="$SRCS" \\
+    --out="$OUTS" \\
+    --out-dir=$OUT_DIRS \\
+    --strip="{strip}" \\
+    --deps="{deps}"    
+        """,
+        env = {
+            "OUT_DIRS": name,
+        }
+    )
+
+def terraform_root(
+    name: str,
+    srcs: list,
+    var_files: list = [],
+    modules: list = [],
+    providers: list = [],
+    toolchain: str = None,
+    labels: list = [],
+    visibility: list = [],
+    add_default_workflows: bool = True,
+):
+    """Build rule for running Terraform against Terraform configuration.
+    Args:
+        name: The name of the build rule.
+        srcs: The source Terraform files for the root module.
+        vars: The Terraform var files passed into the root module.
+        modules: The Terraform modules that the srcs use.
+        providers: The Terraform providers that the srcs use.
+        toolchain: The Terraform toolchain to use with against the srcs.
+        labels: The additonal labels to add to the build rule.
+        visibility: The targets to make the toolchain visible to.
+        add_default_workflows: Whether or not to include the default Terraform workflows as Please targets (_plan, _apply, _destroy, _validate).
+    """
+    # build a Terraform root workspace
+    modules=[canonicalise(module) for module in modules]
+
+    # building a string to place into CMD that'll get subbed with directories
+    modules_fancy = [f"$(locations {module})" for module in modules]
+    modules_subbed = " ".join(modules_fancy)
+
+    root=genrule(
+        name = f"{name}",
+        outs = [f"_{name}"],
+        tools=["//terraform:prepare_workspace"],
+        srcs = srcs + var_files + modules,
+        data = modules,
+        cmd = f"""
+            $TOOLS \\
+                --pkg="$PKG" \\
+                --name="{name}" \\
+                --os="{CONFIG.OS}" \\
+                --arch="{CONFIG.ARCH}" \\
+                --out="$OUTS" \\
+                --pkg-dir="$PKG_DIR" \\
+                --srcs="{srcs}" \\
+                --var-files="{var_files}" \\
+                --modules="{modules_subbed}"
+        """,
+    )
+
+    if add_default_workflows:
+        default_workflows = {
+            "plan": "terraform init && terraform plan",
+            "apply": "terraform init && terraform apply",
+            "destroy": "terraform init && terraform destroy",
+            "validate": "terraform init -backend=false && terraform validate",
+        }
+
+        for workflow in default_workflows.keys():
+            cmd = default_workflows[workflow]
+            sh_cmd(
+                name = f"{name}_{workflow}",
+                shell = "/usr/bin/env bash",
+                srcs = [root],
+                cmd = f"cd $(out_locations {root}) && {cmd}",
+                labels = [f"terraform_{workflow}"],
+            )
+
+    return root
