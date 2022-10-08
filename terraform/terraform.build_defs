@@ -71,7 +71,18 @@ def terraform_root(
     toolchain: str = None,
     labels: list = [],
     visibility: list = [],
-    add_default_workflows: bool = True,
+    add_opinionated_workflows: bool = True,
+    opt_environment: str = "development",
+    environment_configs: dict = {
+        "development": {
+            "var-files": ["variables/development.tfvars"],
+            "backend-files": ["backends/development.tfbackend"]
+        },
+        "production": {
+            "var-files": ["variables/production.tfvars"],
+            "backend-files": ["backends/production.tfbackend"]
+        }
+    }
 ):
     """Build rule for running Terraform against Terraform configuration.
     Args:
@@ -115,11 +126,57 @@ def terraform_root(
         }
     )
 
-    if add_default_workflows:
+    if add_opinionated_workflows:
+        plan_cmds = {env: generate_plan_command_for_env(root, env, environment_configs) for env in environment_configs.keys()}
+        log.debug(plan_cmds)
+        plan_cmds["opt"] = plan_cmds[opt_environment]
+
+        sh_cmd(
+            name = f"{name}_plan",
+            shell = "/usr/bin/env bash",
+            srcs = [root],
+            cmd = plan_cmds,
+            labels = [f"terraform_plan"],
+        )
+
+        apply_cmds = {env: generate_apply_command_for_env(root, env, environment_configs) for env in environment_configs.keys()}
+        log.debug(plan_cmds)
+        apply_cmds["opt"] = apply_cmds[opt_environment]
+        log.info(apply_cmds)
+        sh_cmd(
+            name = f"{name}_apply",
+            shell = "/usr/bin/env bash",
+            srcs = [root],
+            cmd = apply_cmds,
+            labels = [f"terraform_apply"],
+        )
+
+        destroy_cmds = {env: generate_destroy_command_for_env(root, env, environment_configs) for env in environment_configs.keys()}
+        log.debug(destroy_cmds)
+        destroy_cmds["opt"] = destroy_cmds[opt_environment]
+        sh_cmd(
+            name = f"{name}_destroy",
+            shell = "/usr/bin/env bash",
+            srcs = [root],
+            cmd = destroy_cmds,
+            labels = [f"terraform_destroy"],
+        )
+
+        validate_cmds = {env: generate_validate_command_for_env(root, env, environment_configs) for env in environment_configs.keys()}
+        log.debug(validate_cmds)
+        validate_cmds["opt"] = validate_cmds[opt_environment]
+        sh_cmd(
+            name = f"{name}_validate",
+            shell = "/usr/bin/env bash",
+            srcs = [root],
+            cmd = validate_cmds,
+            labels = [f"terraform_validate"],
+        )
+    else:
         default_workflows = {
-            "plan": "terraform init && terraform plan",
-            "apply": "terraform init && terraform apply",
-            "destroy": "terraform init && terraform destroy",
+            "plan": "terraform init \\\$@ && terraform plan \\\$@ ",
+            "apply": "terraform init \\\$@ && terraform apply \\\$@ ",
+            "destroy": "terraform init \\\$@  && terraform destroy \\\$@ ",
             "validate": "terraform init -backend=false && terraform validate",
         }
 
@@ -129,8 +186,66 @@ def terraform_root(
                 name = f"{name}_{workflow}",
                 shell = "/usr/bin/env bash",
                 srcs = [root],
+                # this \\\$@ construct sufficienly escapes things to give us a real $@ behavior from shell apparently...
+                # use this to allow extra parameters on the inputs
                 cmd = f"cd $(out_locations {root}) && {cmd}",
                 labels = [f"terraform_{workflow}"],
             )
 
     return root
+
+def get_var_file_string(env: str, environment_configs: dict):
+    var_files = environment_configs.get(env).get("var-files", [])
+    var_file_args = [f"--var-file {var_file}" for var_file in var_files]
+    var_file_cmd_string = " ".join(var_file_args)
+    return var_file_cmd_string
+
+def get_backend_file_string(env: str, environment_configs: dict):
+    backend_config_files = environment_configs.get(env).get("backend-files", [])
+    backend_config_file_args = [f"--backend-config {backend_file}" for backend_file in backend_config_files]
+    backend_config_cmd_string = " ".join(backend_config_file_args)
+    return backend_config_cmd_string
+
+def generate_plan_command_for_env(root: str, env: str, environment_configs: dict):
+    #return {
+    #    env: "" for env in environment_configs.keys()
+    #}
+    backend_cmd = get_backend_file_string(env, environment_configs)
+    var_file_cmd = get_var_file_string(env, environment_configs)
+
+    # this \\\$@ construct sufficienly escapes things to give us a real $@ behavior from shell apparently...
+    # use this to allow extra parameters on the inputs
+    return f"cd $(out_locations {root}) && terraform init {backend_cmd} {var_file_cmd} \\\$@ && terraform plan {var_file_cmd} \\\$@",
+
+
+def generate_plan_command_for_env(root: str, env: str, environment_configs: dict):
+    backend_cmd = get_backend_file_string(env, environment_configs)
+    var_file_cmd = get_var_file_string(env, environment_configs)
+
+    # this \\\$@ construct sufficienly escapes things to give us a real $@ behavior from shell apparently...
+    # use this to allow extra parameters on the inputs
+    return f"cd $(out_locations {root}) && terraform init {backend_cmd} {var_file_cmd} \\\$@ && terraform plan {var_file_cmd} \\\$@",
+
+def generate_apply_command_for_env(root: str, env: str, environment_configs: dict):
+    backend_cmd = get_backend_file_string(env, environment_configs)
+    var_file_cmd = get_var_file_string(env, environment_configs)
+
+    # this \\\$@ construct sufficienly escapes things to give us a real $@ behavior from shell apparently...
+    # use this to allow extra parameters on the inputs
+    return f"cd $(out_locations {root}) && terraform init {backend_cmd} {var_file_cmd} \\\$@ && terraform apply {var_file_cmd} \\\$@",
+
+def generate_destroy_command_for_env(root: str, env: str, environment_configs: dict):
+    backend_cmd = get_backend_file_string(env, environment_configs)
+    var_file_cmd = get_var_file_string(env, environment_configs)
+
+    # this \\\$@ construct sufficienly escapes things to give us a real $@ behavior from shell apparently...
+    # use this to allow extra parameters on the inputs
+    return f"cd $(out_locations {root}) && terraform init {backend_cmd} {var_file_cmd} \\\$@ && terraform destroy {var_file_cmd} \\\$@",
+
+def generate_validate_command_for_env(root: str, env: str, environment_configs: dict):
+    backend_cmd = get_backend_file_string(env, environment_configs)
+    var_file_cmd = get_var_file_string(env, environment_configs)
+
+    # this \\\$@ construct sufficienly escapes things to give us a real $@ behavior from shell apparently...
+    # use this to allow extra parameters on the inputs
+    return f"cd $(out_locations {root}) && terraform init {backend_cmd} {var_file_cmd} \\\$@ && terraform validate \\\$@",

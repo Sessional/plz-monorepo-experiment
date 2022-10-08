@@ -2,13 +2,49 @@
 
 This mono repo lifts a bit of code from the [pleasings](https://github.com/thought-machine/pleasings) repository in regards to the terraform rules.
 
-The primary goal of this experiment is to explore a mono repo set up in such a manner that discovery of dependencies is simpler and building a container that can apply terraform for a given application (see [CNABs](https://cnab.io/)) can be trivialized without recurring Dockerfile overhead.
+The primary goal of this experiment is to explore a monorepo set up in such a manner that discovery of dependencies is simpler and building a container that can apply terraform for a given application (see [CNABs](https://cnab.io/)) can be trivialized without recurring Dockerfile overhead.
 
-It chooses to ignore managing terraform binaries and providers, and also ignores managing remote repositories. These are things that are trivially done during the init phase regardless of method that is bundled.
+It chooses to ignore managing terraform binaries and providers, and also ignores managing remote repositories. These are things that are trivially done during the init phase regardless of method that is bundled. This means it is not fully hermetic like please is designed for.
 
 ## Using the terraform build rules
 
 Include `subinclude("//terraform:terraform")` in your `BUILD` file.
+
+### Defining custom configs
+
+There's an opinionated set up about how environments are bundled that matches the use case [I've] encountered most commonly in the workplace. The defaults
+for this opinionated workflow provide only two environments (development and production). It may be preferable to override them to add an additional one,
+which is also very common.
+
+`opt_environment` is essentially an alias to set what your default environment should be. When running `please`, and not including `-c` as an option, `opt`
+appears to be the default `-c`. One can run with a specific configuration by specifying `plz run //services/service1:terraform_destroy -c production`.
+In the case this monorepo is structured around, this would be considered a power user technique, as most engineers do not need to be playing with production.
+
+```
+terraform_root(
+    name = "terraform",
+    srcs = glob("**.tf"),
+    modules = ["//platform-team/modules/module1:terraform"],
+    opt_environment = "development",
+    environment_configs = {
+        "development": {
+            "var-files": ["variables/development.tfvars"],
+            "backend-files": ["backends/development.tfbackend"]
+        },
+        "production": {
+            "var-files": ["variables/production.tfvars"],
+            "backend-files": ["backends/production.tfbackend"]
+        }
+    }
+)
+```
+
+In the situation where one does NOT want opinionated workflows added (the environment ones above), one can just pass the following flag
+into the terraform_root rule and they will be left out. Leaving out the opinionated flag does not remove the ability to prove extra inputs with `--`.
+
+```
+add_opinionated_workflows = False,
+```
 
 ### Creating a terraform root
 The terraform root is the directory that is intended to be utilized for running terraform.
@@ -159,9 +195,48 @@ terraform_root(
 )
 ```
 
+## User inputs
+
+User inputs can be provided to `please` by using `--` after the command and providing any additional input, everything will be forwarded to the command.
+
+```
+plz run //services/service1:terraform_plan -c development -- --var-file fail.tfvars
+Initializing modules...
+
+Initializing the backend...
+
+Initializing provider plugins...
+- Reusing previous version of hashicorp/null from the dependency lock file
+- Using previously-installed hashicorp/null v3.1.1
+
+Terraform has been successfully initialized!
+
+You may now begin working with Terraform. Try running "terraform plan" to see
+any changes that are required for your infrastructure. All Terraform commands
+should now work.
+
+If you ever set or change modules or backend configuration for Terraform,
+rerun this command to reinitialize your working directory. If you forget, other
+commands will detect it and remind you to do so if necessary.
+╷
+│ Error: Failed to read variables file
+│
+│ Given variables file fail.tfvars does not exist.
+╵
+```
+
+## Breaking out of plz
+
+While not desired for the standard workflow, sometimes you REALLY just need to get at the root commands and files... `please` makes this VERY easy,
+since it generates output files that are accessible. The `_terraform` directory may change if you opt to modify the target labels from `:terraform`.
+
+```
+cd plz-out/gen/services/service1/_terraform
+terraform plan -var-file variables/dev.tfvars
+```
+
 ## Things still missing
 Building a docker container with the terraform (think CNAB), so one can run `terraform apply` via a docker container with all the terraform set up.
+Can be worked around by using the generated folder for building a docker container.
 
-Try to remove baked in dependency on a defined out folder label (`terraform-target`)
-
-Allow user provided inputs (--var-file, --var) into the terraform workflow targets
+Try to remove baked in dependency on a defined out folder label (`terraform-target`).
