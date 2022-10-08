@@ -7,3 +7,6 @@
 ; when you change it all users will automatically get updated.
 ; [please]
 ; version = 16.22.1
+
+[buildconfig]
+terraform-target = "terraform"

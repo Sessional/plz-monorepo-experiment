@@ -3,6 +3,5 @@ subinclude("//terraform:terraform")
 terraform_module(
     name = "terraform",
     srcs = glob("**.tf"),
-    deps = ["//platform-team/modules/module2:terraform"],
     visibility = ["PUBLIC"]
 )
