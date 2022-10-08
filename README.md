@@ -134,6 +134,42 @@ Plan: 2 to add, 0 to change, 0 to destroy.
 //services/service1:terraform
   //platform-team/modules/module1:terraform
 ```
+### Building all terraform modules
+
+```
+plz build -i terraform_module
+Build finished; total time 240ms, incrementality 0.0%. Outputs:
+//platform-team/modules/module1:terraform:
+  plz-out/gen/platform-team/modules/module1/terraform
+//platform-team/modules/module2:terraform:
+  plz-out/gen/platform-team/modules/module2/terraform
+//services/service1/modules/module1:terraform:
+  plz-out/gen/services/service1/modules/module1/terraform
+```
+
+### Building all terraform roots
+
+```
+plz build -i terraform_root
+Build finished; total time 60ms, incrementality 92.9%. Outputs:
+//services/service1:terraform:
+  plz-out/gen/services/service1/_terraform
+```
+
+### Building all terraform
+
+```
+plz build -i terraform
+Build finished; total time 40ms, incrementality 100.0%. Outputs:
+//platform-team/modules/module1:terraform:
+  plz-out/gen/platform-team/modules/module1/terraform
+//platform-team/modules/module2:terraform:
+  plz-out/gen/platform-team/modules/module2/terraform
+//services/service1:terraform:
+  plz-out/gen/services/service1/_terraform
+//services/service1/modules/module1:terraform:
+  plz-out/gen/services/service1/modules/module1/terraform
+```
 
 ## Notable quirks:
 
@@ -144,6 +180,7 @@ rule name: there is baked in assumptions that the rule names used across the boa
 ## Pre-reqs
 
 - If the please wrapper (pleasew) does not work, install please from the [website.](https://please.build/index.html)
+- A working version of terraform must be installed
 
 
 ## examples

@@ -59,7 +59,8 @@ $TOOLS \\
         env = {
             "OUT_DIRS": name,
             "TERRAFORM_TARGET": TERRAFORM_TARGET
-        }
+        },
+        labels=[name, "terraform_module"],
     )
 
 def terraform_root(
@@ -123,7 +124,8 @@ def terraform_root(
         """,
         env = {
             "TERRAFORM_TARGET": TERRAFORM_TARGET
-        }
+        },
+        labels=[name, "terraform_root"],
     )
 
     if add_opinionated_workflows:
@@ -136,7 +138,7 @@ def terraform_root(
             shell = "/usr/bin/env bash",
             srcs = [root],
             cmd = plan_cmds,
-            labels = [f"terraform_plan"],
+            labels = [f"terraform_plan", "terraform"],
         )
 
         apply_cmds = {env: generate_apply_command_for_env(root, env, environment_configs) for env in environment_configs.keys()}
@@ -148,7 +150,7 @@ def terraform_root(
             shell = "/usr/bin/env bash",
             srcs = [root],
             cmd = apply_cmds,
-            labels = [f"terraform_apply"],
+            labels = [f"terraform_apply", "terraform"],
         )
 
         destroy_cmds = {env: generate_destroy_command_for_env(root, env, environment_configs) for env in environment_configs.keys()}
@@ -159,7 +161,7 @@ def terraform_root(
             shell = "/usr/bin/env bash",
             srcs = [root],
             cmd = destroy_cmds,
-            labels = [f"terraform_destroy"],
+            labels = [f"terraform_destroy", "terraform"],
         )
 
         validate_cmds = {env: generate_validate_command_for_env(root, env, environment_configs) for env in environment_configs.keys()}
@@ -170,7 +172,7 @@ def terraform_root(
             shell = "/usr/bin/env bash",
             srcs = [root],
             cmd = validate_cmds,
-            labels = [f"terraform_validate"],
+            labels = [f"terraform_validate", "terraform"],
         )
     else:
         default_workflows = {
@@ -189,7 +191,7 @@ def terraform_root(
                 # this \\\$@ construct sufficienly escapes things to give us a real $@ behavior from shell apparently...
                 # use this to allow extra parameters on the inputs
                 cmd = f"cd $(out_locations {root}) && {cmd}",
-                labels = [f"terraform_{workflow}"],
+                labels = [f"terraform_{workflow}", "terraform"],
             )
 
     return root
