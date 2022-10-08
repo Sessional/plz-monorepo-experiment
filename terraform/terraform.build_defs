@@ -1,3 +1,5 @@
+TERRAFORM_TARGET = CONFIG.get('TERRAFORM_TARGET') or "terraform"
+
 def terraform_module(
     name: str,
     srcs: list = None,
@@ -30,6 +32,11 @@ def terraform_module(
 
     deps=[canonicalise(dep) for dep in deps]
 
+    # building a string to place into CMD that'll get subbed with directories
+    modules_fancy = [f"$(locations {module})" for module in deps]
+    modules_subbed = " ".join(modules_fancy)
+
+
     genrule(
         name = name,
         srcs = [module_srcs_dir],
@@ -43,6 +50,7 @@ $TOOLS \\
     --pkg="$PKG" \\
     --name="$NAME" \\
     --module-dir="$SRCS" \\
+    --modules={modules_subbed} \\
     --out="$OUTS" \\
     --out-dir=$OUT_DIRS \\
     --strip="{strip}" \\
@@ -50,6 +58,7 @@ $TOOLS \\
         """,
         env = {
             "OUT_DIRS": name,
+            "TERRAFORM_TARGET": TERRAFORM_TARGET
         }
     )
 
@@ -99,8 +108,11 @@ def terraform_root(
                 --pkg-dir="$PKG_DIR" \\
                 --srcs="{srcs}" \\
                 --var-files="{var_files}" \\
-                --modules="{modules_subbed}"
+                --modules {modules_subbed}
         """,
+        env = {
+            "TERRAFORM_TARGET": TERRAFORM_TARGET
+        }
     )
 
     if add_default_workflows:
