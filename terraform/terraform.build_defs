@@ -1,4 +1,5 @@
 TERRAFORM_TARGET = CONFIG.get('TERRAFORM_TARGET') or "terraform"
+CONTAINER_TOOL = CONFIG.get('CONTAINER_TOOL') or "docker"
 
 def terraform_module(
     name: str,
@@ -128,6 +129,30 @@ def terraform_root(
         labels=[name, "terraform_root"],
     )
 
+
+    docker_generator = genrule(
+        name = f"{name}#srcs",
+        outs = [f"{name}#srcs"],
+        srcs = [root],
+        cmd = f"""
+            mkdir $OUTS && mv $SRCS $OUTS && cat << EOT > $OUTS/Dockerfile
+FROM hashicorp/terraform:latest
+
+WORKDIR /terraform
+
+COPY _{TERRAFORM_TARGET} .
+EOT""",
+    )
+
+    return sh_cmd(
+        name = f"{name}_container",
+        shell = "/usr/bin/env bash",
+        srcs = [docker_generator],
+        deps = [docker_generator],
+        cmd = f"""cd $(out_location {docker_generator}) && {CONTAINER_TOOL} build --no-cache -f Dockerfile .""",
+        labels = ["terraform"],
+    )
+
     if add_opinionated_workflows:
         plan_cmds = {env: generate_plan_command_for_env(root, env, environment_configs) for env in environment_configs.keys()}
         log.debug(plan_cmds)
@@ -218,7 +243,6 @@ def generate_plan_command_for_env(root: str, env: str, environment_configs: dict
     # this \\\$@ construct sufficienly escapes things to give us a real $@ behavior from shell apparently...
     # use this to allow extra parameters on the inputs
     return f"cd $(out_locations {root}) && terraform init {backend_cmd} {var_file_cmd} \\\$@ && terraform plan {var_file_cmd} \\\$@",
-
 
 def generate_plan_command_for_env(root: str, env: str, environment_configs: dict):
     backend_cmd = get_backend_file_string(env, environment_configs)

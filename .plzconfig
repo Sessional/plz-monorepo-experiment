@@ -10,3 +10,4 @@
 
 [buildconfig]
 terraform-target = "terraform"
+container-tool = "podman"
