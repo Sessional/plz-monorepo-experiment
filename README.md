@@ -10,6 +10,14 @@ It chooses to ignore managing terraform binaries and providers, and also ignores
 
 Include `subinclude("//terraform:terraform")` in your `BUILD` file.
 
+Configuration options
+
+```
+[buildconfig]
+terraform-target = "terraform" # the name you intend to use for your targets
+container-tool = "podman" # the tool to use to build the containers
+```
+
 ### Defining custom configs
 
 There's an opinionated set up about how environments are bundled that matches the use case [I've] encountered most commonly in the workplace. The defaults
@@ -21,8 +29,10 @@ appears to be the default `-c`. One can run with a specific configuration by spe
 In the case this monorepo is structured around, this would be considered a power user technique, as most engineers do not need to be playing with production.
 
 ```
+subinclude("//terraform:terraform")
+
 terraform_root(
-    name = "terraform",
+    name = TERRAFORM_TARGET,
     srcs = glob("**.tf"),
     modules = ["//platform-team/modules/module1:terraform"],
     opt_environment = "development",
@@ -50,8 +60,10 @@ add_opinionated_workflows = False,
 The terraform root is the directory that is intended to be utilized for running terraform.
 
 ```
+subinclude("//terraform:terraform")
+
 terraform_root(
-    name = "terraform",
+    name = TERRAFORM_TARGET,
     srcs = glob("**.tf"),
     modules = ["//platform-team/modules/module1:terraform"]
 )
@@ -61,8 +73,10 @@ terraform_root(
 The terraform module is a reusable chunk of terraform that can be included as a dependency in multiple terraform roots.
 
 ```
+subinclude("//terraform:terraform")
+
 terraform_module(
-    name = "terraform",
+    name = TERRAFORM_TARGET,
     srcs = glob("**.tf"),
     visibility = ["PUBLIC"]
 )
@@ -171,11 +185,17 @@ Build finished; total time 40ms, incrementality 100.0%. Outputs:
   plz-out/gen/services/service1/modules/module1/terraform
 ```
 
+### Building a container (CNAB)
+
+```
+plz run //services/service1:terraform_container
+```
+
 ## Notable quirks:
 
 Module source paths: The module source paths are relative to the monorepo root (`.plzconfig` file) if targeting a module defined by the `terraform_module` rule. Module source paths are relative to the current working directory if targeting a module that is in the application folder.
 
-rule name: there is baked in assumptions that the rule names used across the board for all `terraform_roots` and `terraform_modules` is the same. By default it expects `terraform`, but it can be configured by setting the build config `terraform-target`.
+rule name: there is baked in assumptions that the rule names used across the board for all `terraform_roots` and `terraform_modules` is the same. By default it expects `terraform`, but it can be configured by setting the build config `terraform-target`. You can ignore that this exists by setting `name=TERRAFORM_TARGET` in the build rules.
 
 ## Pre-reqs
 
@@ -190,7 +210,7 @@ rule name: there is baked in assumptions that the rule names used across the boa
 subinclude("//terraform:terraform")
 
 terraform_module(
-    name = "terraform",
+    name = TERRAFORM_TARGET,
     srcs = glob("**.tf"),
     deps = ["//platform-team/modules/module2:terraform"], # reference the terraform_module target
     visibility = ["PUBLIC"]
@@ -201,7 +221,7 @@ terraform_module(
 
 ```
 terraform_root(
-    name = "terraform",
+    name = TERRAFORM_TARGET,
     srcs = glob("**.tf", "modules/module1/**.tf"), # include it with glob, be sure to exclude the things included with modules
     #srcs = glob("*.tf") + glob("modules/module2/*.tf"), could also choose to be more picky with the globbing instead of excluding
     modules = ["//platform-team/modules/module1:terraform", "//services/service1/modules/module1:terraform"]
@@ -214,7 +234,7 @@ terraform_root(
 subinclude("//terraform:terraform")
 
 terraform_module(
-    name = "terraform",
+    name = TERRAFORM_TARGET,
     srcs = glob("**.tf"),
     visibility = ["PUBLIC"]
 )
@@ -226,7 +246,7 @@ terraform_module(
 subinclude("//terraform:terraform")
 
 terraform_root(
-    name = "terraform",
+    name = TERRAFORM_TARGET,
     srcs = glob("**.tf", "modules/module1/**.tf"),
     modules = ["//platform-team/modules/module1:terraform", "//services/service1/modules/module1:terraform"]
 )
@@ -273,7 +293,7 @@ terraform plan -var-file variables/dev.tfvars
 ```
 
 ## Things still missing
-Building a docker container with the terraform (think CNAB), so one can run `terraform apply` via a docker container with all the terraform set up.
-Can be worked around by using the generated folder for building a docker container.
 
 Try to remove baked in dependency on a defined out folder label (`terraform-target`).
+
+Use a flag to enable pruning of previous images in container build (i.e. via label?)
