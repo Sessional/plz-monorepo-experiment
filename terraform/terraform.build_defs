@@ -144,7 +144,7 @@ COPY _{TERRAFORM_TARGET} .
 EOT""",
     )
 
-    return sh_cmd(
+    sh_cmd(
         name = f"{name}_container",
         shell = "/usr/bin/env bash",
         srcs = [docker_generator],
